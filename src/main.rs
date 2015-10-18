@@ -44,7 +44,7 @@ impl WebSocketClient {
 
 struct WebSocketServer {
     socket: mio::tcp::TcpListener,
-    clients: std::collections::HashMap<mio::Token, mio::tcp::TcpStream>,
+    clients: std::collections::HashMap<mio::Token, WebSocketClient>,
     token_counter: usize
 }
 
@@ -71,14 +71,22 @@ impl mio::Handler for WebSocketServer {
                 self.token_counter += 1;
                 let new_token = mio::Token(self.token_counter);
 
-                self.clients.insert(new_token, client_socket);
-                event_loop.register(&self.clients[&new_token],
+                self.clients.insert(new_token, WebSocketClient::new(client_socket));
+                event_loop.register(&self.clients[&new_token].socket,
                                     new_token,
                                     mio::EventSet::readable(),
                                     mio::PollOpt::edge() | mio::PollOpt::oneshot()
                                     ).unwrap();
             },
-            _ => println!("something else")
+            token => {
+                let mut client = self.clients.get_mut(&token).unwrap();
+                client.read();
+                event_loop.register(&client.socket,
+                                    token,
+                                    mio::EventSet::readable(),
+                                    mio::PollOpt::edge() | mio::PollOpt::oneshot()
+                                    ).unwrap();
+            }
         }
     }
 }
