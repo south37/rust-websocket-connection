@@ -1,4 +1,5 @@
 extern crate mio;
+use std::net::SocketAddr;
 use mio::*;
 use mio::tcp::*;
 
@@ -11,7 +12,7 @@ impl Handler for WebSocketServer {
 fn main() {
   let mut event_loop = EventLoop::new().unwrap();
 
-  let address = "0.0.0.0:10000".parse().unwrap();
+  let address = "0.0.0.0:10000".parse::<SocketAddr>().unwrap();
   let server_socket = TcpListener::bind(&address).unwrap();
 
   event_loop.register(&server_socket,
