@@ -1,5 +1,5 @@
 extern crate mio;
-use mio::TryRead;
+use mio::{TryRead, TryWrite};
 extern crate http_muncher;
 extern crate sha1;
 extern crate rustc_serialize;
@@ -72,12 +72,28 @@ impl WebSocketClient {
                 Ok(Some(len)) => {
                     self.http_parser.parse(&buf[0..len]);
                     if self.http_parser.is_upgrade() {
-                        // something ....
+                        self.state = ClientState::HandshakeResponse;
+                        self.interest.remove(mio::EventSet::readable());
+                        self.interest.insert(mio::EventSet::writable());
                         break;
                     }
                 }
             }
         }
+    }
+
+    fn write(&mut self) {
+        let headers = self.headers.borrow();
+        let response_key = gen_key(&headers.get("Sec-WebSocket-Key").unwrap());
+        let response = std::fmt::format(format_args!(
+                "HTTP/1.1 101 Switching Protocols\r\n\
+                 Connection: Upgrade\r\n\
+                 Sec-WebSocket-Accept: {}\r\n\
+                 Upgrade: websocket\r\n\r\n", response_key));
+        self.socket.try_write(response.as_bytes()).unwrap();
+        self.state = ClientState::Connected;
+        self.interest.remove(mio::EventSet::writable());
+        self.interest.insert(mio::EventSet::readable());
     }
 
     fn new(socket: mio::tcp::TcpStream) -> WebSocketClient {
@@ -112,36 +128,48 @@ impl mio::Handler for WebSocketServer {
     fn ready(&mut self, event_loop: &mut mio::EventLoop<WebSocketServer>,
              token: mio::Token, events: mio::EventSet)
     {
-        match token {
-            SERVER_TOKEN => {
-                let client_socket = match self.socket.accept() {
-                    Err(e) => {
-                        println!("Accept error: {}", e);
-                        return;
-                    },
-                    Ok(None) => unreachable!("Accept has returned 'None'"),
-                    Ok(Some((sock, addr))) => sock
-                };
+        if events.is_readable() {
+            match token {
+                SERVER_TOKEN => {
+                    let client_socket = match self.socket.accept() {
+                        Err(e) => {
+                            println!("Accept error: {}", e);
+                            return;
+                        },
+                        Ok(None) => unreachable!("Accept has returned 'None'"),
+                        Ok(Some((sock, addr))) => sock
+                    };
 
-                self.token_counter += 1;
-                let new_token = mio::Token(self.token_counter);
+                    self.token_counter += 1;
+                    let new_token = mio::Token(self.token_counter);
 
-                self.clients.insert(new_token, WebSocketClient::new(client_socket));
-                event_loop.register(&self.clients[&new_token].socket,
-                                    new_token,
-                                    mio::EventSet::readable(),
-                                    mio::PollOpt::edge() | mio::PollOpt::oneshot()
-                                    ).unwrap();
-            },
-            token => {
-                let mut client = self.clients.get_mut(&token).unwrap();
-                client.read();
-                event_loop.reregister(&client.socket,
-                                    token,
-                                    client.interest,
-                                    mio::PollOpt::edge() | mio::PollOpt::oneshot()
-                                    ).unwrap();
+                    self.clients.insert(new_token, WebSocketClient::new(client_socket));
+                    event_loop.register(&self.clients[&new_token].socket,
+                                        new_token,
+                                        mio::EventSet::readable(),
+                                        mio::PollOpt::edge() | mio::PollOpt::oneshot()
+                                        ).unwrap();
+                },
+                token => {
+                    let mut client = self.clients.get_mut(&token).unwrap();
+                    client.read();
+                    event_loop.reregister(&client.socket,
+                                        token,
+                                        client.interest,
+                                        mio::PollOpt::edge() | mio::PollOpt::oneshot()
+                                        ).unwrap();
+                }
             }
+        }
+
+        if events.is_writable() {
+            let mut client = self.clients.get_mut(&token).unwrap();
+            client.write();
+            event_loop.reregister(&client.socket,
+                                  token,
+                                  client.interest,
+                                  mio::PollOpt::edge() | mio::PollOpt::oneshot()
+                                  ).unwrap();
         }
     }
 }
