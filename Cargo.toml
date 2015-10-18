@@ -7,4 +7,4 @@ authors = ["Nao Minami <south37777@gmail.com>"]
 git = "https://github.com/carllerche/mio"
 
 [dependencies]
-http-muncher = "0.2.0"
+http-muncher = "0.2.1"
