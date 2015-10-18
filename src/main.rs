@@ -81,7 +81,7 @@ impl mio::Handler for WebSocketServer {
             token => {
                 let mut client = self.clients.get_mut(&token).unwrap();
                 client.read();
-                event_loop.register(&client.socket,
+                event_loop.reregister(&client.socket,
                                     token,
                                     mio::EventSet::readable(),
                                     mio::PollOpt::edge() | mio::PollOpt::oneshot()
