@@ -1,4 +1,46 @@
 extern crate mio;
+extern crate http_muncher;
+use mio::TryRead;
+
+struct HttpParser;
+impl http_muncher::ParserHandler for HttpParser { }
+
+struct WebSocketClient {
+    socket: mio::tcp::TcpStream,
+    http_paraser: http_muncher::Parser<HttpParser>
+}
+
+impl WebSocketClient {
+    fn read(&mut self) {
+        loop {
+            let mut buf = [0; 2048];
+            match self.socket.try_read(&mut buf) {
+                Err(e) => {
+                    println!("Error while reading socket: {:?}", e);
+                    return;
+                },
+                Ok(None) => {
+                    // Socket buffer has got no more bytes.
+                    break;
+                },
+                Ok(Some(len)) => {
+                    self.http_paraser.parse(&buf[0..len]);
+                    if self.http_paraser.is_upgrade() {
+                        // something ....
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fn new(socket: mio::tcp::TcpStream) -> WebSocketClient {
+        WebSocketClient {
+            socket: socket,
+            http_paraser: http_muncher::Parser::request(HttpParser)
+        }
+    }
+}
 
 struct WebSocketServer {
     socket: mio::tcp::TcpListener,
