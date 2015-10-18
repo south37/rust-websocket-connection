@@ -7,7 +7,7 @@ impl http_muncher::ParserHandler for HttpParser { }
 
 struct WebSocketClient {
     socket: mio::tcp::TcpStream,
-    http_paraser: http_muncher::Parser<HttpParser>
+    http_parser: http_muncher::Parser<HttpParser>
 }
 
 impl WebSocketClient {
@@ -24,8 +24,8 @@ impl WebSocketClient {
                     break;
                 },
                 Ok(Some(len)) => {
-                    self.http_paraser.parse(&buf[0..len]);
-                    if self.http_paraser.is_upgrade() {
+                    self.http_parser.parse(&buf[0..len]);
+                    if self.http_parser.is_upgrade() {
                         // something ....
                         break;
                     }
@@ -37,7 +37,7 @@ impl WebSocketClient {
     fn new(socket: mio::tcp::TcpStream) -> WebSocketClient {
         WebSocketClient {
             socket: socket,
-            http_paraser: http_muncher::Parser::request(HttpParser)
+            http_parser: http_muncher::Parser::request(HttpParser)
         }
     }
 }
