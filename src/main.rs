@@ -40,11 +40,20 @@ impl http_muncher::ParserHandler for HttpParser {
     }
 }
 
+#[derive(PartialEq)]
+enum ClientState {
+    AwaitingHandshake,
+    HandshakeResponse,
+    Connected
+}
+
 struct WebSocketClient {
     socket: mio::tcp::TcpStream,
     http_parser: http_muncher::Parser<HttpParser>,
     headers: std::rc::Rc<std::cell::RefCell<
-        std::collections::HashMap<String, String>>>
+        std::collections::HashMap<String, String>>>,
+    interest: mio::EventSet,
+    state: ClientState
 }
 
 impl WebSocketClient {
@@ -81,7 +90,9 @@ impl WebSocketClient {
             http_parser: http_muncher::Parser::request(HttpParser {
                 current_key: None,
                 headers: headers.clone()
-            })
+            }),
+            interest: mio::EventSet::readable(),
+            state: ClientState::AwaitingHandshake
         }
     }
 }
@@ -127,7 +138,7 @@ impl mio::Handler for WebSocketServer {
                 client.read();
                 event_loop.reregister(&client.socket,
                                     token,
-                                    mio::EventSet::readable(),
+                                    client.interest,
                                     mio::PollOpt::edge() | mio::PollOpt::oneshot()
                                     ).unwrap();
             }
