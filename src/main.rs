@@ -17,12 +17,34 @@ fn gen_key(key: &String) -> String {
     return buf.to_base64(rustc_serialize::base64::STANDARD);
 }
 
-struct HttpParser;
-impl http_muncher::ParserHandler for HttpParser { }
+struct HttpParser {
+    current_key: Option<String>,
+    headers: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<String, String>>>
+}
+
+impl http_muncher::ParserHandler for HttpParser {
+    fn on_header_field(&mut self, s: &[u8]) -> bool {
+        self.current_key = Some(std::str::from_utf8(s).unwrap().to_string());
+        true
+    }
+
+    fn on_header_value(&mut self, s: &[u8]) -> bool {
+        self.headers.borrow_mut()
+            .insert(self.current_key.clone().unwrap(),
+                    std::str::from_utf8(s).unwrap().to_string());
+        true
+    }
+
+    fn on_headers_complete(&mut self) -> bool {
+        false
+    }
+}
 
 struct WebSocketClient {
     socket: mio::tcp::TcpStream,
-    http_parser: http_muncher::Parser<HttpParser>
+    http_parser: http_muncher::Parser<HttpParser>,
+    headers: std::rc::Rc<std::cell::RefCell<
+        std::collections::HashMap<String, String>>>
 }
 
 impl WebSocketClient {
@@ -50,9 +72,16 @@ impl WebSocketClient {
     }
 
     fn new(socket: mio::tcp::TcpStream) -> WebSocketClient {
+        let headers = std::rc::Rc::new(std::cell::RefCell::new(
+                std::collections::HashMap::new()));
+
         WebSocketClient {
             socket: socket,
-            http_parser: http_muncher::Parser::request(HttpParser)
+            headers: headers.clone(),
+            http_parser: http_muncher::Parser::request(HttpParser {
+                current_key: None,
+                headers: headers.clone()
+            })
         }
     }
 }
